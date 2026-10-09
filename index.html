@@ -350,6 +350,17 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .tsum b{font-size:1.1rem}
 .ttab td{padding:7px 8px;vertical-align:top}
 .danger-zone{border-color:var(--red)}
+
+#login{position:fixed;inset:0;z-index:20;background:linear-gradient(135deg,var(--band) 0%,var(--band2) 100%);display:grid;place-items:center;padding:20px}
+#login[hidden]{display:none}
+.lcard{background:var(--surface);color:var(--ink);border-radius:18px;padding:30px 28px;width:min(400px,100%);box-shadow:0 20px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:12px;text-align:center}
+.lcard .f{text-align:left}.lcard input{width:100%;padding:10px 12px;font-size:1rem}
+.lcard h1{font-size:1.25rem}.lcard .linkbtn{align-self:center}.lcard .err{color:var(--red);min-height:1.2em;margin:0;font-size:.88rem}
+.lmark{width:56px;height:56px;border-radius:14px;background:var(--soft);display:grid;place-items:center;margin:0 auto}
+.lmark svg{width:32px;height:32px;stroke:var(--wheat);fill:none;stroke-width:1.8}
+.pwbox{display:flex;flex-direction:column;gap:8px;background:var(--surface2);border:1px dashed var(--line);border-radius:10px;padding:14px}
+.pwbox div{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.pwbox span{color:var(--muted)}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:1.15rem;letter-spacing:.06em}
 .vbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--straw);border-radius:12px;padding:12px 16px;margin-bottom:18px;box-shadow:var(--shadow);font-size:.9rem}
 .vbar>div{flex:1;min-width:240px}
 .vbar.ok{border-left-color:var(--sprout);background:var(--okbg)}
@@ -382,7 +393,7 @@ dialog::backdrop{background:rgba(20,22,16,.5)}
         <div class="mark"><svg viewBox="0 0 24 24"><path d="M12 21V9"/><path d="M12 13c-3 0-5-2-5-5 3 0 5 2 5 5z"/><path d="M12 11c3 0 5-2 5-5-3 0-5 2-5 5z"/><path d="M3 21h18"/></svg></div>
         <div><h1>Suivi hebdomadaire du semis direct</h1><p id="sub">Région Casablanca-Settat</p></div>
       </div>
-      <div class="hd-right"><button class="pill demo" id="demobtn" data-a="demo" title="Explorer l'application avec des données fictives, sans rien enregistrer">▶ Démonstration</button><span class="pill deadline" id="deadline"></span><span class="pill" id="who">Chargement…</span></div>
+      <div class="hd-right"><button class="pill demo" id="demobtn" data-a="demo" title="Explorer l'application avec des données fictives, sans rien enregistrer">▶ Démonstration</button><span class="pill deadline" id="deadline"></span><span class="pill" id="who">Chargement…</span><button class="pill demo" id="mypwd" data-a="mypwd" hidden>Mot de passe</button><button class="pill demo" id="logout" data-a="logout" hidden>Déconnexion</button></div>
     </div>
     <nav class="tabs" role="tablist" id="tabs"></nav>
   </div>
@@ -398,10 +409,21 @@ dialog::backdrop{background:rgba(20,22,16,.5)}
     <section class="view" id="v-raci" hidden></section>
     <section class="view" id="v-params" hidden></section>
     <section class="view" id="v-secu" hidden></section>
+    <section class="view" id="v-comptes" hidden></section>
     <section class="view" id="v-aide" hidden></section>
   </main>
 </div>
 <dialog id="dlg"><div class="dh"><h3 id="dlg-t"></h3><button class="btn ghost small" data-a="close">Fermer</button></div><div class="dbody" id="dlg-b"></div><div class="df"><span class="err" id="dlg-e"></span><button class="btn ghost" data-a="close">Annuler</button><button class="btn" data-a="save-action">Enregistrer</button></div></dialog>
+<div id="login" hidden><div class="lcard">
+  <div class="lmark"><svg viewBox="0 0 24 24"><path d="M12 21V9"/><path d="M12 13c-3 0-5-2-5-5 3 0 5 2 5 5z"/><path d="M12 11c3 0 5-2 5-5-3 0-5 2-5 5z"/><path d="M3 21h18"/></svg></div>
+  <h1>Suivi hebdomadaire du semis direct</h1><p class="note">Direction Régionale de l'Agriculture · Casablanca-Settat</p>
+  <label class="f"><span>Identifiant</span><input id="l-id" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="ex. dpa.settat"></label>
+  <label class="f"><span>Mot de passe</span><input id="l-pw" type="password" autocomplete="current-password"></label>
+  <p class="err" id="l-err" role="alert"></p>
+  <button class="btn" data-a="login" style="width:100%;justify-content:center">Se connecter</button>
+  <button class="linkbtn" data-a="demo-login" style="margin-top:14px">Voir la démonstration sans compte</button>
+  <p class="note" style="margin-top:16px;font-size:.8rem">Mot de passe oublié : contactez l'administrateur de l'application à la DRA.</p>
+</div></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
 /* ================= Valeurs par défaut (reprises du classeur Excel) ================= */
@@ -445,7 +467,13 @@ const RACI_V=['A/R','A','R','C','I'];
 
 /* ================= État ================= */
 let P=clone(DEF_P),R=clone(DEF_R),SA={},AC=[],HI=[],VA={},JR={},HL=[];
-let DEMO=null,REAL=null;   // mode démonstration : données en mémoire uniquement, jamais enregistrées
+let DEMO=null,REAL=null;
+/* Mode serveur Google Sheets : activé quand config.js fournit l'adresse du serveur Apps Script */
+const API_URL=(typeof window!=='undefined'&&window.SD_CONFIG&&window.SD_CONFIG.API_URL)||'';
+let TOKEN=null,ME=null,COMPTES={};
+const ROLE_LIB={ADMIN:'Administrateur',DIRECTEUR:'Directeur Régional',CHEF_DIVISION:'Chef de la Division de Développement des Filières Agricoles',SAISIE:'Responsable de saisie'};
+const canV=()=>DEMO?canAdmin:mode==='gs'?!!(ME&&['ADMIN','CHEF_DIVISION'].includes(ME.role)):canAdmin;
+const mesZones=()=>mode==='gs'&&!DEMO&&ME&&ME.role==='SAISIE'?ME.zones:null;   // mode démonstration : données en mémoire uniquement, jamais enregistrées
 const nowD=()=>DEMO?new Date(DEMO.now):new Date(Date.now());
 const JOURNAL_DEPUIS='2026-10-09T14:00:00Z';   // date de mise en service du journal protégé
 let db=null,user=null,dl=null,mode='local',canAdmin=true,canWrite=true,myId=null,names={};
@@ -490,9 +518,21 @@ function fail(e){
 function loadLocal(){try{const r=JSON.parse(localStorage.getItem(LS)||'null');if(r){P={...clone(DEF_P),...(r.P||{})};R=r.R||R;SA=r.SA||{};AC=r.AC||[];HI=r.HI||[];VA=r.VA||{};}}catch(e){}}
 function saveLocal(){if(DEMO)return;try{localStorage.setItem(LS,JSON.stringify({P,R,SA,AC,HI,VA}));}catch(e){toast("Stockage local plein ou bloqué : faites une sauvegarde JSON.");}}
 
+/* ================= Serveur Google Sheets ================= */
+async function api(action,data){
+  let r;
+  try{r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,jeton:TOKEN,...(data||{})}),redirect:'follow'});}
+  catch(e){throw{code:'reseau',message:'Connexion au serveur impossible : vérifiez internet puis réessayez. Vos valeurs sont conservées à l\'écran.'};}
+  let j;try{j=await r.json();}catch(e){throw{code:'reseau',message:'Réponse illisible du serveur : vérifiez l\'adresse dans config.js.'};}
+  if(!j.ok){if(j.code==='auth'&&action!=='connexion')gsLogout(true);if(j.code==='mdp')askPwd(true);throw j;}
+  return j;
+}
+async function gsCall(action,data){try{const r=await api(action,data);await gsRefresh();return r;}catch(e){toast(e.message||'Erreur du serveur.');return null;}}
+
 /* ================= Écritures ================= */
 /* Paramètres : refus si un autre éditeur a enregistré depuis l'ouverture du formulaire */
 async function wParams(np,baseMaj){
+  if(mode==='gs'&&!DEMO)return !!(await gsCall('parametres',{params:np,versionVue:baseMaj}));
   np.maj=nowD().toISOString();np.majPar=myId;
   if(mode==='db'&&!DEMO){try{
       const cur=await db.doc('params/campagne').get();
@@ -500,6 +540,7 @@ async function wParams(np,baseMaj){
       await db.doc('params/campagne').set(np);return true;}catch(e){fail(e);return false;}}
   P=np;saveLocal();render(true);return true;}
 async function wRaci(nr){
+  if(mode==='gs'&&!DEMO)return !!(await gsCall('raci',{raci:nr}));
   nr.maj=nowD().toISOString();
   if(mode==='db'&&!DEMO){try{await db.doc('raci/matrice').set(nr);return true;}catch(e){fail(e);return false;}}
   R=nr;saveLocal();render();return true;}
@@ -508,6 +549,7 @@ async function wRaci(nr){
 const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 function mergeHI(){HI=[...HL,...Object.entries(JR).flatMap(([uid,d])=>(d.entrees||[]).map(e=>({...e,par:e.par||uid,journal:true})))];}
 async function wHist(e){
+  if(mode==='gs'&&!DEMO)return;   // le serveur tient le journal
   e={id:newId(),...e,par:myId,date:nowD().toISOString()};
   if(mode==='db'&&!DEMO){
     if(!myId)return;   // compte sans identifiant : aucune trace possible, signalé par le contrôle d'intégrité
@@ -525,19 +567,23 @@ async function empreinte(o){
 }
 const FKEYS=['ha','cereales','agriculteurs','semoirs','demo','appui','difficultes'];
 const ficheVal=s=>{const o={};FKEYS.forEach(k=>o[k]=s&&s[k]!==undefined?s[k]:null);return o;};
-const peutSaisir=()=>canWrite&&(!P.gel||canAdmin);
+const peutSaisir=()=>canWrite&&(!P.gel||canV());
 async function wSaisie(id,data,meta){
   const prev=SA[id]||null;
+  if(mode==='gs'&&!DEMO){const m=meta||{};
+    return !!(data?await gsCall('saisie',{fiche:data,versionVue:prev?prev.maj:null,type:m.type,avertissements:m.avertissements}):await gsCall('vider',{semaine:m.semaine,zone:m.zone}));}
   if(mode==='db'&&!DEMO){try{if(data)await db.collection('saisies').doc(id).set(data);else await db.collection('saisies').doc(id).delete();}catch(e){fail(e);return false;}}
   else{if(data)SA[id]=data;else delete SA[id];saveLocal();}
   await wHist({fiche:id,type:data?(prev?'Modification':'Création'):'Vidage',avant:prev,apres:data,...(meta||{})});
   if(mode!=='db'||DEMO)render();
   return true;}
 async function wAction(id,data){
+  if(mode==='gs'&&!DEMO)return !!(data?await gsCall('action',{id,donnees:data}):await gsCall('supprimerAction',{id}));
   if(mode==='db'&&!DEMO){try{if(!data)await db.collection('actions').doc(id).delete();else if(id)await db.collection('actions').doc(id).set(data);else await db.collection('actions').add(data);return true;}catch(e){fail(e);return false;}}
   if(!data)AC=AC.filter(a=>a.id!==id);else if(id){const i=AC.findIndex(a=>a.id===id);AC[i]={id,...data};}else AC.push({id:Date.now().toString(36),...data});
   saveLocal();render();return true;}
 async function wValid(w,data){
+  if(mode==='gs'&&!DEMO)return !!(data?await gsCall('valider',{semaine:w,cumul:data.cumul,semaineHa:data.semaineHa,tr:data.tr,note:data.note}):await gsCall('rouvrir',{semaine:w}));
   const id='w'+String(w).padStart(2,'0');
   if(mode==='db'&&!DEMO){try{if(data)await db.collection('validations').doc(id).set(data);else await db.collection('validations').doc(id).delete();return true;}catch(e){fail(e);return false;}}
   if(data)VA[id]=data;else delete VA[id];saveLocal();render();return true;}
@@ -601,11 +647,12 @@ async function controles(){
     if(diffs.length)add('rouge',`Chiffres modifiés après validation (S${v.semaine})`,diffs.join(' ; '),"Vérifier avec le point focal. Si la correction est justifiée, rouvrir puis revalider la semaine ; sinon restaurer la valeur depuis l'historique.");
   }
   // 2. Modifications sans trace dans le journal (écriture hors application)
-  if(mode==='db'&&!DEMO){const sans=Object.entries(SA).filter(([id,s])=>s.maj&&s.maj>JOURNAL_DEPUIS&&!HI.some(h=>h.fiche===id&&h.apres&&h.apres.maj===s.maj));
+  if((mode==='db'||mode==='gs')&&!DEMO){const sans=Object.entries(SA).filter(([id,s])=>s.maj&&s.maj>JOURNAL_DEPUIS&&!HI.some(h=>h.fiche===id&&h.apres&&h.apres.maj===s.maj));
     if(sans.length)add('rouge',`${sans.length} fiche(s) modifiée(s) sans trace dans le journal`,sans.slice(0,8).map(([id,s])=>`${s.zone} S${s.semaine}`).join(' ; '),"Possible écriture en dehors de l'application. Geler les saisies, exporter une sauvegarde et vérifier la liste des personnes ayant accès.");}
   // 3. Un même compte saisit pour plusieurs zones la même semaine
   const parSem={};HI.filter(h=>h.par&&h.zone&&h.semaine).forEach(h=>{const k=h.par+'|'+h.semaine;(parSem[k]=parSem[k]||new Set()).add(h.zone);});
-  Object.entries(parSem).filter(([,z])=>z.size>=3).forEach(([k,z])=>{const[u,w]=k.split('|');add('ambre',`Un même compte a saisi pour ${z.size} zones en S${w}`,`${names[u]||'Compte '+u.slice(0,6)} : ${[...z].join(', ')}`,"Normal pour la cellule de suivi de la DRA. Sinon, vérifier que le compte n'est pas partagé entre plusieurs agents.");});
+  const normal=(u,z)=>{const c=COMPTES[u];if(!c)return false;if(c.role==='ADMIN'||c.role==='CHEF_DIVISION')return true;const ez=P.zones.filter(x=>x.structure===c.entite).map(x=>x.zone);return [...z].every(x=>ez.includes(x));};
+  Object.entries(parSem).filter(([k,z])=>z.size>=3&&!normal(k.split('|')[0],z)).forEach(([k,z])=>{const[u,w]=k.split('|');add('ambre',`Un même compte a saisi pour ${z.size} zones en S${w}`,`${names[u]||'Compte '+u.slice(0,6)} : ${[...z].join(', ')}`,"Normal pour la cellule de suivi de la DRA. Sinon, vérifier que le compte n'est pas partagé entre plusieurs agents.");});
   // 4. Activité nocturne
   const nuit=HI.filter(h=>{const d=new Date(h.date);const hh=d.getHours();return hh<6||hh>=22;});
   if(nuit.length)add('ambre',`${nuit.length} modification(s) entre 22h et 6h`,nuit.slice(0,6).map(h=>`${nz(h.zone)} S${h.semaine||'?'} le ${fdt(h.date)}`).join(' ; '),"Vérifier auprès des auteurs que ces saisies sont légitimes.");
@@ -666,7 +713,7 @@ const IC={
   board:'<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="13" rx="1"/>',
   list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'};
 const ico=(n,cls='i')=>`<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${IC[n]}</svg>`;
-const TABS=[['dash','Tableau de bord'],['saisie','Saisie hebdo'],['actions','Actions'],['raci','Responsabilités'],['params','Paramètres'],['secu','Sécurité'],['aide',"Mode d'emploi"]];
+const TABS=[['dash','Tableau de bord'],['saisie','Saisie hebdo'],['actions','Actions'],['raci','Responsabilités'],['params','Paramètres'],['secu','Sécurité'],['comptes','Comptes'],['aide',"Mode d'emploi"]];
 const ZCOL=['#2F5A28','#6E9C48','#A9C77F','#B8913A','#D9B969','#7A5C3A','#C46A4F','#5F7F8C','#8F918A'];
 const SCOL={'À faire':'#8F918A','En cours':'#B8913A','Réalisée':'#6E9C48','Bloquée':'#A33A2C'};
 const nr='<span class="nr">non renseigné</span>';
@@ -674,6 +721,7 @@ const sgn=v=>(v>0?'+':'')+fmt(v);
 
 IC.hist='<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>';
 IC.secu='<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M12 8v5M12 16v.01"/>';
+IC.comptes='<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>';
 IC.shield='<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>';
 IC.save='<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/>';
 IC.upload='<path d="M12 21V9M7 14l5-5 5 5"/><path d="M5 3h14"/>';
@@ -699,10 +747,14 @@ function renderFrame(){
   else{el.className='pill deadline late';el.innerHTML=`${ico('alert')} Échéance de saisie S${D.n} dépassée`;}
   const cw=currentWeek(),miss=P.zones.filter(z=>['ko','today'].includes(statut(cw,z.zone)[1])).length,late=AC.filter(isLate).length;
   const badge={saisie:miss,actions:late,secu:ctrlRouges()};
-  $('#tabs').innerHTML=TABS.map(([k,l])=>`<button role="tab" id="tab-${k}" aria-controls="v-${k}" data-tab="${k}" aria-selected="${k===tab}" tabindex="${k===tab?0:-1}">${ico(k)}${l}${badge[k]?`<span class="badge" aria-label="${badge[k]} ${k==='saisie'?'zones à saisir':k==='secu'?'alertes de sécurité':'actions en retard'}">${badge[k]}</span>`:''}</button>`).join('');
+  $('#tabs').innerHTML=TABS.filter(([k])=>k!=='comptes'||(mode==='gs'&&canAdmin&&!DEMO)).map(([k,l])=>`<button role="tab" id="tab-${k}" aria-controls="v-${k}" data-tab="${k}" aria-selected="${k===tab}" tabindex="${k===tab?0:-1}">${ico(k)}${l}${badge[k]?`<span class="badge" aria-label="${badge[k]} ${k==='saisie'?'zones à saisir':k==='secu'?'alertes de sécurité':'actions en retard'}">${badge[k]}</span>`:''}</button>`).join('');
   const db_=$('#demobar');if(DEMO){db_.hidden=false;db_.innerHTML=`${ico('dash')}<span><b>Démonstration</b> : 12 semaines de données fictives, situation au ${fdt(nowD().toISOString())}. Rien n'est enregistré ; quitter la démonstration rend l'application à son état réel.</span><span class="sp"></span><button class="btn small" data-a="tests">${ico('check')}Lancer les tests</button><button class="btn ghost small" data-a="demo-exit">Quitter la démonstration</button>`;}else db_.hidden=true;
   const dbt=$('#demobtn');if(dbt)dbt.hidden=!!DEMO;
-  const who=$('#who');if(DEMO){if(!who.dataset.orig)who.dataset.orig=who.innerHTML;who.innerHTML=`${ico('dash')}<b>Démonstration</b>`;}else if(who.dataset.orig){who.innerHTML=who.dataset.orig;delete who.dataset.orig;}
+  const who=$('#who'),gsOn=mode==='gs'&&ME&&!DEMO;
+  if(DEMO){if(!who.dataset.orig)who.dataset.orig=who.innerHTML;who.innerHTML=`${ico('dash')}<b>Démonstration</b>`;}
+  else if(gsOn){who.innerHTML=`${ico('user')}<b></b><span></span>`;who.querySelector('b').textContent=ME.nom;who.querySelector('span').textContent=' · '+(ROLE_LIB[ME.role]||ME.role)+(ME.role==='SAISIE'?' ('+ME.entite+')':'');delete who.dataset.orig;}
+  else if(who.dataset.orig){who.innerHTML=who.dataset.orig;delete who.dataset.orig;}
+  $('#logout').hidden=!gsOn;$('#mypwd').hidden=!gsOn;
   const gb=$('#gelbar');if(P.gel){gb.hidden=false;gb.innerHTML=`${ico('lock')}<span><b>Saisies gelées par la DRA</b>${P.gelMotif?` : ${esc(P.gelMotif)}`:''}. ${canAdmin?'Vous pouvez dégeler depuis l\'onglet Sécurité.':'Les fiches sont en lecture seule jusqu\'à nouvel ordre.'}</span>`;}else gb.hidden=true;
   const lb=$('#localbar');
   if(mode==='local'&&!DEMO){lb.hidden=false;lb.innerHTML=`${ico('alert')}<span><b>Mode local :</b> les données sont enregistrées dans ce navigateur uniquement et ne sont pas partagées. Faites une sauvegarde régulière depuis « Paramètres ».</span>`;}
@@ -712,7 +764,8 @@ function render(force){
   renderFrame();
   document.querySelectorAll('.view').forEach(v=>{v.hidden=v.id!=='v-'+tab;v.setAttribute('role','tabpanel');v.setAttribute('aria-labelledby','tab-'+v.id.slice(2));});
   if(tab==='params'&&paramsDirty&&!force){paramsRemote=true;const b=$('#p-remote');if(b)b.hidden=false;return;}
-  ({dash:rDash,saisie:rSaisie,actions:rActions,raci:rRaci,params:rParams,secu:rSecu,aide:rAide})[tab]();
+  if(tab==='comptes'&&!(mode==='gs'&&canAdmin&&!DEMO))tab='dash';
+  ({dash:rDash,saisie:rSaisie,actions:rActions,raci:rRaci,params:rParams,secu:rSecu,comptes:rComptes,aide:rAide})[tab]();
 }
 function weekPick(id,w){
   return `<span class="weekpick"><button data-a="wk" data-t="${id}" data-d="-1" ${w<=1?'disabled':''} aria-label="Semaine précédente">◀</button><span class="wk"><b>Semaine ${w}</b><span>vendredi ${fdate(friday(w))}</span></span><button data-a="wk" data-t="${id}" data-d="1" ${w>=NW()?'disabled':''} aria-label="Semaine suivante">▶</button></span>`;
@@ -781,8 +834,8 @@ function gauge(G,prof){
 }
 function validationPanel(w,G,Z){
   const v=getV(w),closed=nowD()>deadline(w);
-  if(v)return `<div class="vbar ok">${ico('shield')}<div><b>Semaine ${w} validée par la DRA</b> ${v.validePar?`par ${esc(names[v.validePar]||'un éditeur')} `:''}le ${fdt(v.date)}. Chiffres arrêtés : ${v.cumul===null?'aucun cumul':fmt(v.cumul)+' ha'}, ${v.tr} zone(s) transmise(s).${changedSince(w)?` <span class="tag amb plain">${changedSince(w)} fiche(s) modifiée(s) depuis</span>`:''}${v.empreinte?`<br><span class="note">Empreinte d'intégrité : <code>${esc(v.empreinte.slice(0,22))}…</code></span>`:''}</div>${canAdmin?`<button class="btn ghost small" data-a="unvalid">Rouvrir</button>`:''}</div>`;
-  if(!canAdmin)return `<div class="vbar">${ico('shield')}<div><b>Semaine ${w} non encore validée</b> par la cellule de suivi de la DRA : les chiffres peuvent encore changer.</div></div>`;
+  if(v)return `<div class="vbar ok">${ico('shield')}<div><b>Semaine ${w} validée par la DRA</b> ${v.validePar?`par ${esc(names[v.validePar]||'un éditeur')} `:''}le ${fdt(v.date)}. Chiffres arrêtés : ${v.cumul===null?'aucun cumul':fmt(v.cumul)+' ha'}, ${v.tr} zone(s) transmise(s).${changedSince(w)?` <span class="tag amb plain">${changedSince(w)} fiche(s) modifiée(s) depuis</span>`:''}${v.empreinte?`<br><span class="note">Empreinte d'intégrité : <code>${esc(v.empreinte.slice(0,22))}…</code></span>`:''}</div>${canV()?`<button class="btn ghost small" data-a="unvalid">Rouvrir</button>`:''}</div>`;
+  if(!canV())return `<div class="vbar">${ico('shield')}<div><b>Semaine ${w} non encore validée</b> par la cellule de suivi de la DRA : les chiffres peuvent encore changer.</div></div>`;
   return `<div class="vbar">${ico('shield')}<div><b>Semaine ${w} à valider.</b> La validation fige les chiffres présentés en revue et archive la note au DG. ${!closed?'<span class="note">Possible après l\'heure limite de saisie.</span>':G.tr<Z.length?`<span class="note">${Z.length-G.tr} zone(s) n'ont pas transmis.</span>`:''}</div><button class="btn" data-a="valid" ${closed?'':'disabled'}>${ico('check')}Valider la semaine ${w}</button></div>`;
 }
 const changedSince=w=>{const v=getV(w);if(!v)return 0;return P.zones.filter(z=>{const s=getS(w,z.zone);return s&&s.maj>v.date;}).length;};
@@ -936,10 +989,11 @@ function rSaisie(){
   /* Conserver ce que l'utilisateur est en train de taper avant de redessiner */
   const keep={},act=document.activeElement,focus=act&&act.name&&act.closest&&act.closest('#v-saisie .card')?{id:act.closest('.card').dataset.id,name:act.name,s:act.selectionStart,e:act.selectionEnd}:null;
   document.querySelectorAll('#v-saisie .card').forEach(c=>{if(dirtyCards.has(c.dataset.id)){const o={};FIELDS.forEach(f=>{const el=c.querySelector(`[name=${f}]`);if(el)o[f]=el.value;});keep[c.dataset.id]={vals:o,warn:c.querySelector('.warn').textContent};}});
-  const w=saisieW,dis=peutSaisir()?'':'disabled',val=getV(w);
+  const w=saisieW,dis0=peutSaisir()?'':'disabled',dis=dis0,val=getV(w);
   const all=P.zones.map(z=>({z,st:statut(w,z.zone)}));
   const tr=all.filter(x=>x.st[1]==='ok').length;
-  let zs=all.filter(x=>!zoneFilter||x.z.zone===zoneFilter);
+  const mz=mesZones();if(zoneFilter==='__mine__'&&!mz)zoneFilter='';
+  let zs=all.filter(x=>!zoneFilter||x.z.zone===zoneFilter||(zoneFilter==='__mine__'&&mz.includes(x.z.zone)));
   if(stFilter==='todo')zs=zs.filter(x=>x.st[1]!=='ok');if(stFilter==='done')zs=zs.filter(x=>x.st[1]==='ok');
   const opt=(arr,v)=>['',...arr].map(o=>`<option value="${esc(o)}" ${o===(v||'')?'selected':''}>${o?esc(o):'—'}</option>`).join('');
   const sem=all.reduce((s,x)=>s+(has(w,x.z.zone)?+getS(w,x.z.zone).ha:0),0);
@@ -949,8 +1003,8 @@ function rSaisie(){
   ${val?`<div class="banner">${ico('shield')}<span>La semaine ${w} a été validée par la DRA le ${fdt(val.date)}. Toute modification reste possible mais sera signalée dans l'historique et sur le tableau de bord.</span></div>`:''}
   ${!attendue(w)?`<div class="banner">${ico('cal')}<span>Semaine ${w} : aucune saisie n'est attendue avant la semaine d'ouverture (S${P.ouverture}). Vous pouvez néanmoins saisir si des semis ont eu lieu.</span></div>`:''}
   <div class="toolbar">${weekPick('saisie',w)}
-    <label class="f" style="flex-direction:row;align-items:center;gap:8px"><span>Ma zone</span><select id="mz" aria-label="Ma zone"><option value="">—</option>${P.zones.map(z=>`<option ${z.zone===maZone?'selected':''}>${esc(z.zone)}</option>`).join('')}</select></label>
-    <select id="zf" aria-label="Filtrer par zone"><option value="">Toutes les zones</option>${P.zones.map(z=>`<option ${z.zone===zoneFilter?'selected':''}>${esc(z.zone)}</option>`).join('')}</select>
+    ${mz?'':`<label class="f" style="flex-direction:row;align-items:center;gap:8px"><span>Ma zone</span><select id="mz" aria-label="Ma zone"><option value="">—</option>${P.zones.map(z=>`<option ${z.zone===maZone?'selected':''}>${esc(z.zone)}</option>`).join('')}</select></label>`}
+    <select id="zf" aria-label="Filtrer par zone">${mz?`<option value="__mine__" ${zoneFilter==='__mine__'?'selected':''}>Mes zones (${esc(mz.join(', '))})</option>`:''}<option value="">Toutes les zones</option>${P.zones.map(z=>`<option ${z.zone===zoneFilter?'selected':''}>${esc(z.zone)}</option>`).join('')}</select>
     <span class="chips" role="group" aria-label="Filtrer par statut">${[['','Toutes'],['todo','À saisir'],['done','Transmises']].map(([k,l])=>`<button data-a="stf" data-v="${k}" aria-pressed="${stFilter===k}">${l}</button>`).join('')}</span></div>
   <div class="panel wsum">
     <div><div class="big">${tr}<small> / ${P.zones.length} zones</small></div><span class="note">ont transmis pour la semaine ${w}</span></div>
@@ -958,7 +1012,7 @@ function rSaisie(){
       <div class="legend"><span><span class="sw" style="background:var(--sprout)"></span>Transmis</span><span><span class="sw" style="background:var(--straw)"></span>À transmettre aujourd'hui</span><span><span class="sw" style="background:var(--red)"></span>Non transmis (heure limite passée)</span><span><span class="sw" style="background:var(--surface2);border:1px solid var(--line)"></span>À venir ou non attendue</span></div></div>
     <div style="text-align:right"><div class="big">${fmt(sem)}<small> ha</small></div><span class="note">semés cette semaine · saisie avant ${esc(String(P.heureSaisie).toLowerCase())}</span></div>
   </div>
-  ${zs.length?`<div class="cards">${zs.map(({z,st})=>{const s=getS(w,z.zone)||{},id=sid(w,z.zone),zst=zoneStats(z,w);
+  ${zs.length?`<div class="cards">${zs.map(({z,st})=>{const s=getS(w,z.zone)||{},id=sid(w,z.zone),zst=zoneStats(z,w),dis=mz&&!mz.includes(z.zone)?'disabled':dis0;
     const who=s.saisiPar?(names[s.saisiPar]||'un contributeur'):'',nh=HI.filter(h=>h.fiche===id).length;
     const u=(fr,ar,name,unit,v,step='any',cls='')=>`<label class="f ${cls}">${lab(fr,ar)}<span class="unit"><input type="number" inputmode="decimal" min="0" step="${step}" name="${name}" value="${v??''}" ${dis}><em>${unit}</em></span></label>`;
     return `<article class="card ${st[1]}" data-id="${id}" data-zone="${esc(z.zone)}">
@@ -974,7 +1028,7 @@ function rSaisie(){
       <label class="f w">${lab('Difficultés rencontrées','الصعوبات المسجلة')}<textarea name="difficultes" rows="2" ${dis} placeholder="Pannes, pluies, disponibilité des semoirs…">${esc(s.difficultes)}</textarea></label>
     </div>
     <div class="cf"><span class="note">${s.maj?`${ico('check','i')} ${who?esc(who)+', ':''}${fdt(s.maj)}`:'Aucune saisie'}${nh?` · <button class="linkbtn" data-a="hist" data-id="${id}">${ico('hist','i')} Historique (${nh})</button>`:''}</span><span class="warn" role="alert"></span>
-      <span style="display:flex;gap:6px;flex-wrap:wrap">${s.difficultes&&peutSaisir()?`<button class="btn ghost small" data-a="dif2act">${ico('plus')}Action</button>`:''}${s.maj&&peutSaisir()?`<button class="btn danger small" data-a="clear-s">Vider</button>`:''}<button class="btn small" data-a="save-s" ${dis}>${ico('check')}Enregistrer <bdi lang="ar" class="ar">حفظ</bdi></button></span></div>
+      <span style="display:flex;gap:6px;flex-wrap:wrap">${s.difficultes&&peutSaisir()&&!dis?`<button class="btn ghost small" data-a="dif2act">${ico('plus')}Action</button>`:''}${s.maj&&peutSaisir()&&!dis?`<button class="btn danger small" data-a="clear-s">Vider</button>`:''}${dis&&mz?'<span class="note">Lecture seule</span>':`<button class="btn small" data-a="save-s" ${dis}>${ico('check')}Enregistrer <bdi lang="ar" class="ar">حفظ</bdi></button>`}</span></div>
     </article>`;}).join('')}</div>`:'<div class="panel"><p class="note" style="margin:0">Aucune zone ne correspond à ce filtre.</p></div>'}`;
   /* Restaurer les valeurs en cours et le curseur */
   Object.entries(keep).forEach(([id,k])=>{const c=document.querySelector(`#v-saisie .card[data-id="${id}"]`);if(!c)return;c.classList.add('dirty');
@@ -989,8 +1043,8 @@ async function saveSaisie(card){
   const ce=num(g('cereales')),sm=num(g('semoirs'));
   if(ce!==null&&ce>ha){warn.textContent='Céréales supérieures à la superficie totale.';return;}
   const checks=verifs(z,ha,sm);
-  if(maZone&&zone!==maZone&&!canAdmin)checks.push(`vous modifiez la zone ${zone} alors que votre zone est ${maZone}`);
-  if(getV(saisieW)&&!canAdmin)checks.push('la semaine est déjà validée par la DRA');
+  if(maZone&&zone!==maZone&&!canV()&&!mesZones())checks.push(`vous modifiez la zone ${zone} alors que votre zone est ${maZone}`);
+  if(getV(saisieW)&&!canV())checks.push('la semaine est déjà validée par la DRA');
   const sig=id+'|'+[ha,ce,sm].join('|');
   if(checks.length&&!confirmed.has(sig)){confirmed.add(sig);warn.textContent='À vérifier : '+checks.join(' ; ')+'. Cliquez à nouveau sur Enregistrer pour confirmer.';return;}
   warn.textContent='';
@@ -1029,8 +1083,8 @@ function rRaci(){
 
 /* ================= Boîte de dialogue ================= */
 let dlgMode='action';
-function openDialog(title,html,withSave){
-  dlgMode=withSave?'action':'view';$('#dlg-t').textContent=title;$('#dlg-e').textContent='';$('#dlg-b').innerHTML=html;
+function openDialog(title,html,withSave,dmode){
+  dlgMode=dmode||(withSave?'action':'view');if(dlgMode!=='pwd'){pwdForce=false;$('.dh [data-a=close]').hidden=false;}$('#dlg-t').textContent=title;$('#dlg-e').textContent='';$('#dlg-b').innerHTML=html;
   $('[data-a=save-action]').hidden=!withSave;$('.df [data-a=close]').hidden=!withSave;$('#dlg').showModal();
 }
 
@@ -1039,7 +1093,7 @@ let actF={s:'',st:''},actView='board';
 function rActions(){
   const A=AC.filter(a=>(!actF.s||a.structure===actF.s)&&(!actF.st||a.statut===actF.st)).sort((a,b)=>(a.echeance||'9').localeCompare(b.echeance||'9'));
   const dis=canWrite?'':'disabled',cnt=s=>AC.filter(a=>a.statut===s).length,late=AC.filter(isLate).length;
-  const del=a=>canAdmin?`<button class="btn danger small" data-a="del-action" data-id="${a.id}">Supprimer</button>`:'';
+  const del=a=>canV()?`<button class="btn danger small" data-a="del-action" data-id="${a.id}">Supprimer</button>`:'';
   const card=a=>`<div class="acard ${isLate(a)?'late':''}" style="--acc:${SCOL[a.statut]||'var(--line)'}">
     <div class="am"><span class="tag plain" style="background:var(--soft);color:var(--wheat)">${esc(a.structure)}</span>${a.zone?`<span>${esc(a.zone)}</span>`:''}${a.origine?`<span class="tag wait plain">difficulté S${a.origine}</span>`:''}</div>
     <p>${esc(a.action)}</p>${a.commentaire?`<div class="note">${esc(a.commentaire)}</div>`:''}
@@ -1054,7 +1108,7 @@ function rActions(){
     <select id="af-s" aria-label="Filtrer par structure"><option value="">Toutes les structures</option>${P.structures.map(s=>`<option ${s===actF.s?'selected':''}>${esc(s)}</option>`).join('')}</select>
     ${actView==='list'?`<select id="af-st" aria-label="Filtrer par statut"><option value="">Tous les statuts</option>${STATUTS.map(s=>`<option ${s===actF.st?'selected':''}>${s}</option>`).join('')}</select>`:''}
     <span class="sp"></span><span class="chips" role="group" aria-label="Affichage"><button data-a="aview" data-v="board" aria-pressed="${actView==='board'}">${ico('board')} Tableau</button><button data-a="aview" data-v="list" aria-pressed="${actView==='list'}">${ico('list')} Liste</button></span></div>
-  ${canAdmin?'':'<p class="note">La suppression d\'une action est réservée à la cellule de suivi de la DRA : passez-la plutôt en « Réalisée » ou « Bloquée ».</p>'}
+  ${canV()?'':'<p class="note">La suppression d\'une action est réservée à la cellule de suivi de la DRA : passez-la plutôt en « Réalisée » ou « Bloquée ».</p>'}
   ${actView==='board'?`<div class="kanban">${STATUTS.map(s=>{const L=AC.filter(a=>a.statut===s&&(!actF.s||a.structure===actF.s)).sort((a,b)=>(a.echeance||'9').localeCompare(b.echeance||'9'));
     return `<div class="col" style="--acc:${SCOL[s]}"><div class="colh"><span><i></i>${s}</span><span class="note">${L.length}</span></div>${L.map(card).join('')||'<p class="note" style="padding:0 6px">Aucune action</p>'}</div>`;}).join('')}</div>`
   :A.length?`<div class="tbl"><table><thead><tr><th>Revue du</th><th>Structure</th><th>Action ou décision</th><th>Personne</th><th>Échéance</th><th>Statut</th><th></th></tr></thead><tbody>
@@ -1166,12 +1220,18 @@ function rAide(){
   <div class="flow">${D.map((d,i)=>`<div class="fstep"><div class="ic">${ico(icons[i]||'check')}</div><div class="hr">${i+1} · ${esc(d.heure)}</div><h3>${esc(d.etape)}</h3><p>${esc(d.resp)}</p></div>`).join('')}</div>
   <div class="rule" style="background:var(--okbg)"><div class="ic" style="color:var(--wheat)">▶</div><div><h3>Découvrir l'application sans risque</h3><p style="margin:4px 0 8px">Le bouton « Démonstration » charge 12 semaines de données fictives, en mémoire seulement : rien n'est enregistré, ni dans la base ni dans le navigateur. Vous pouvez tout essayer (saisir, valider, geler, exporter) et lancer les tests automatiques. En quittant la démonstration, l'application revient exactement à son état réel.</p>${DEMO?'':`<button class="btn" data-a="demo">${ico('dash')}Lancer la démonstration</button>`}</div></div>
   <div class="rule"><div class="ic">!</div><div><h3>Règle d'or de la saisie</h3><p style="margin:4px 0 0">Une case vide signifie « non renseigné », jamais zéro. Saisissez 0 uniquement si la zone confirme n'avoir rien semé dans la semaine. Une zone sans saisie à l'heure limite passe en « Non transmis » ; un cumul auquel il manque une semaine est signalé « incomplet » et n'est pas jugé en retard tant que la semaine n'est pas complétée.</p></div></div>
-  <div class="panel-h"><div><h2>Qui peut faire quoi</h2><p>Les rôles se règlent dans le menu de partage de l'application.</p></div></div>
+  ${mode==='gs'?`<div class="panel-h"><div><h2>Qui peut faire quoi</h2><p>Chaque responsable se connecte avec son identifiant personnel ; l'administrateur gère les comptes.</p></div></div>
+  <div class="roles">
+    <div class="role" style="border-color:var(--sprout)"><h3>${ico('dash')}Directeur Régional</h3><p>Compte « directeur.regional »</p><ul><li>Consulte tout le tableau de bord, les saisies et les actions</li><li>Lit la note de synthèse du vendredi</li></ul></div>
+    <div class="role" style="border-color:var(--straw)"><h3>${ico('shield')}Chef de la Division DDFA</h3><p>Compte « chef.ddfa »</p><ul><li>Valide chaque semaine, corrige toute zone</li><li>Gère les actions, gèle les saisies en cas d'incident</li></ul></div>
+    <div class="role"><h3>${ico('saisie')}Responsables de saisie</h3><p>Un compte par DPA et un pour l'ORMVAD</p><ul><li>Saisissent uniquement les zones de leur entité</li><li>Créent et mettent à jour les actions</li></ul></div>
+    <div class="role" style="border-color:var(--wheat);background:var(--soft)"><h3>${ico('params')}Administrateur</h3><p>Compte « admin »</p><ul><li>Crée et désactive les comptes, réinitialise les mots de passe</li><li>Modifie les paramètres et la matrice des responsabilités</li></ul></div>
+  </div>`:`<div class="panel-h"><div><h2>Qui peut faire quoi</h2><p>Les rôles se règlent dans le menu de partage de l'application.</p></div></div>
   <div class="roles">
     <div class="role"><h3>${ico('dash')}Lecteur</h3><p>DG, INRA, OPA, partenaires</p><ul><li>Consulte le tableau de bord et les graphiques</li><li>Voit les saisies, l'historique, les actions et les responsabilités</li></ul></div>
     <div class="role" style="border-color:var(--sprout)"><h3>${ico('saisie')}Contributeur</h3><p>Points focaux des DPA, de l'ORMVAD et de l'ONCA</p><ul><li>Saisit et corrige les fiches hebdomadaires de sa zone</li><li>Crée et met à jour les actions (sans les supprimer)</li></ul></div>
     <div class="role" style="border-color:var(--wheat);background:var(--soft)"><h3>${ico('params')}Éditeur</h3><p>Cellule de suivi de la DRA</p><ul><li>Valide chaque semaine et archive la note au DG</li><li>Modifie programme, profil, points focaux et matrice RACI ; supprime des actions</li></ul></div>
-  </div>
+  </div>`}
   <div class="faq">
     <div class="panel"><h3>${ico('saisie')} Comment saisir ma zone ?</h3><p>Onglet « Saisie hebdo » : choisissez « Ma zone » une fois pour toutes, puis la semaine. Remplissez la fiche et cliquez sur Enregistrer. Une valeur inhabituelle (plus de ${Math.round((+P.seuilSemaine||0.25)*100)} % du programme en une semaine, par exemple) demande une confirmation.</p></div>
     <div class="panel"><h3>${ico('hist')} Puis-je corriger une erreur ?</h3><p>Oui. Chaque enregistrement est conservé dans l'historique de la fiche, avec son auteur et l'heure ; une ancienne valeur peut être restaurée. Une correction faite après la validation de la DRA est signalée.</p></div>
@@ -1192,29 +1252,35 @@ async function rSecu(){
   const col={rouge:'ko',ambre:'amb',info:'wait'};
   el.innerHTML=`
   <div class="secu-head panel ${etat[1]}"><div class="secu-ic">${ico(r?'alert':'shield')}</div><div><div class="gt" style="text-align:left">État de sécurité</div><h2>${etat[0]}</h2><p class="note" style="margin:2px 0 0">${etat[2]} · ${L.length} contrôle(s) signalé(s) · analyse du ${fdt(ctrlAt)}</p></div>
-    <div class="secu-btns"><button class="btn ghost" data-a="recheck">${ico('hist')}Relancer l'analyse</button>${canAdmin?(P.gel?`<button class="btn" data-a="degel">${ico('check')}Dégeler les saisies</button>`:`<input id="gel-motif" placeholder="Motif du gel (affiché à tous)" style="min-width:220px"><button class="btn danger" data-a="gel">${ico('lock')}Geler les saisies</button>`):''}</div></div>
+    <div class="secu-btns"><button class="btn ghost" data-a="recheck">${ico('hist')}Relancer l'analyse</button>${canV()?(P.gel?`<button class="btn" data-a="degel">${ico('check')}Dégeler les saisies</button>`:`<input id="gel-motif" placeholder="Motif du gel (affiché à tous)" style="min-width:220px"><button class="btn danger" data-a="gel">${ico('lock')}Geler les saisies</button>`):''}</div></div>
   <div class="panel" style="margin-top:20px"><div class="panel-h"><div><h2>Alertes</h2><p>Contrôles automatiques à chaque ouverture de cet onglet : intégrité des semaines validées, traces du journal, comportements inhabituels, données personnelles.</p></div></div>
     ${L.length?`<div class="alerts">${L.sort((x,y)=>['rouge','ambre','info'].indexOf(x.niv)-['rouge','ambre','info'].indexOf(y.niv)).map(x=>`<div class="alert ${x.niv}"><span class="tag ${col[x.niv]}">${x.niv==='rouge'?'Rouge':x.niv==='ambre'?'Ambre':'Info'}</span><div><b>${esc(x.titre)}</b><p>${esc(x.detail)}</p><p class="cons">${ico('check')} ${esc(x.conseil)}</p></div></div>`).join('')}</div>`:'<p class="note">Aucune alerte.</p>'}</div>
   <div class="grid2" style="margin-top:20px">
-    <div class="panel"><div class="panel-h"><div><h2>Ce qui protège les données</h2></div></div><ul class="plist">
+    <div class="panel"><div class="panel-h"><div><h2>Ce qui protège les données</h2></div></div>${mode==='gs'?`<ul class="plist">
+      <li><b>Comptes personnels</b> : identifiant et mot de passe propres à chaque responsable ; mot de passe temporaire changé à la première connexion.</li>
+      <li><b>Mots de passe chiffrés</b> : seule une empreinte est conservée dans le Google Sheet ; blocage après 5 essais, session limitée à 12 heures.</li>
+      <li><b>Droits contrôlés par le serveur</b> : chaque entité ne peut saisir que ses propres zones ; seuls le Chef de division et l'administrateur valident.</li>
+      <li><b>Journal intégral</b> : chaque opération est inscrite dans la feuille « Journal » du Google Sheet de la DRA.</li>
+      <li><b>Archives scellées</b> : chaque semaine validée porte une empreinte SHA-256 ; toute modification ultérieure est détectée.</li></ul>`:`<ul class="plist">
       <li><b>Accès nominatif</b> : seules les personnes invitées dans le menu de partage voient l'application ; rien n'est public.</li>
       <li><b>Droits contrôlés par le serveur</b> : paramètres, matrice RACI et validations réservés aux éditeurs, même en contournant l'écran.</li>
       <li><b>Journal protégé</b> : chaque compte écrit dans son propre journal, que personne d'autre ne peut modifier.</li>
       <li><b>Archives scellées</b> : chaque semaine validée est archivée avec une empreinte d'intégrité ; toute modification ultérieure est détectée.</li>
-      <li><b>Contenus neutralisés</b> : un texte saisi ne peut pas exécuter de code chez les autres utilisateurs.</li></ul></div>
+      <li><b>Contenus neutralisés</b> : un texte saisi ne peut pas exécuter de code chez les autres utilisateurs.</li></ul>`}</div>
     <div class="panel"><div class="panel-h"><div><h2>Procédure en cas d'incident</h2></div></div><ol class="plist">
       <li>Geler les saisies (bouton ci-dessus) pour stopper toute nouvelle modification depuis l'application.</li>
       <li>Télécharger une sauvegarde complète depuis « Paramètres », pour conserver l'état au moment de l'incident.</li>
       <li>Identifier les fiches touchées grâce aux alertes et à leur historique.</li>
-      <li>Retirer l'accès des comptes suspects dans le menu de partage.</li>
+      <li>${mode==='gs'?'Désactiver les comptes suspects dans l\'onglet Comptes.':'Retirer l\'accès des comptes suspects dans le menu de partage.'}</li>
       <li>Restaurer les bonnes valeurs depuis l'historique, rouvrir puis revalider les semaines concernées.</li>
       <li>Dégeler les saisies et consigner l'incident dans « Actions ».</li></ol>
-      <p class="note">Le gel bloque l'écran mais pas un utilisateur expérimenté qui écrirait directement dans la base. Pour un verrouillage côté serveur, demandez à Claude de republier l'application avec les saisies réservées aux éditeurs : la mesure s'applique immédiatement.</p></div>
+      ${mode==='gs'?'<p class="note">En mode serveur, le gel est appliqué par le serveur lui-même : aucune saisie d\'entité n\'est acceptée tant qu\'il est actif. Pour couper un accès, désactivez le compte dans l\'onglet Comptes.</p>':'<p class="note">Le gel bloque l\'écran mais pas un utilisateur expérimenté qui écrirait directement dans la base. Pour un verrouillage côté serveur, demandez à Claude de republier l\'application avec les saisies réservées aux éditeurs : la mesure s\'applique immédiatement.</p>'}</div>
   </div>
   ${canAdmin&&!DEMO?`<div class="panel danger-zone" style="margin-top:20px"><div class="panel-h"><div><h2>Remise à zéro de l'application</h2><p>Efface définitivement toutes les saisies, validations, actions, historiques et la matrice des responsabilités${mode==='db'?' pour tous les utilisateurs':' de ce navigateur'}. Le programme, les zones et les paramètres de campagne sont conservés. Faites d'abord une sauvegarde.</p></div></div>
     <div class="toolbar" style="margin:0"><input id="reset-conf" placeholder="Tapez EFFACER" autocomplete="off" style="width:180px"><button class="btn danger" data-a="reset">${ico('alert')}Effacer toutes les données</button></div></div>`:''}`;
 }
 async function setGel(on){
+  if(mode==='gs'&&!DEMO){const m=$('#gel-motif');const r=await gsCall('gel',{actif:on,motif:on?((m&&m.value.trim())||"Vérification d'une anomalie de saisie"):''});if(r)toast(on?'Saisies gelées.':'Saisies dégelées.');return;}
   const m=$('#gel-motif'),motif=on?((m&&m.value.trim())||"Vérification d'une anomalie de saisie"):'';
   const np={...clone(P),gel:on,gelPar:on?myId:null,gelDate:on?nowD().toISOString():null,gelMotif:on?motif:null};
   if(await wParams(np,P.maj||null)){toast(on?'Saisies gelées.':'Saisies dégelées.');await wHist({type:on?'Gel des saisies':'Dégel des saisies',fiche:'(paramètres)'});render(true);}
@@ -1336,6 +1402,7 @@ function exitDemo(){
   P=REAL.P;R=REAL.R;SA=REAL.SA;AC=REAL.AC;HL=REAL.HL;JR=REAL.JR;VA=REAL.VA;canWrite=REAL.canWrite;canAdmin=REAL.canAdmin;
   DEMO=null;REAL=null;mergeHI();selW=null;saisieW=null;dirtyCards.clear();confirmed.clear();
   controles().then(()=>render(true));render(true);
+  if(mode==='gs'&&!TOKEN)showLogin();
   toast('Démonstration terminée : retour à l\'application réelle. Aucune donnée fictive n\'a été conservée.');
 }
 
@@ -1395,6 +1462,7 @@ async function showTests(){
 async function resetAll(){
   if(DEMO){toast('Quittez d\'abord la démonstration.');return;}
   if((($('#reset-conf')||{}).value||'').trim().toUpperCase()!=='EFFACER'){toast('Tapez EFFACER dans le champ pour confirmer.');return;}
+  if(mode==='gs'){const r=await gsCall('remiseAZero');if(r)toast('Application remise à zéro : saisies, actions et validations effacées, journal archivé dans le Google Sheet.');return;}
   if(mode==='db'){
     const own=user?await user.isOwner():false;let n=0;
     try{
@@ -1410,6 +1478,110 @@ async function resetAll(){
     toast('Données locales effacées : l\'application est vierge. Les paramètres de campagne sont conservés.');
   }
   dirtyCards.clear();selW=null;saisieW=null;await controles();render(true);
+}
+
+
+/* ================= Connexion et comptes (mode serveur Google Sheets) ================= */
+function setRoles(){const r=ME?ME.role:'';canAdmin=r==='ADMIN';canWrite=['ADMIN','CHEF_DIVISION','SAISIE'].includes(r);myId=ME?ME.id:null;}
+function applyState(st){
+  ME=st.moi;setRoles();COMPTES={};(st.noms||[]).forEach(n=>{COMPTES[n.id]=n;names[n.id]=n.nom;});
+  const sa={};(st.saisies||[]).forEach(s=>{sa[sid(s.semaine,s.zone)]=s;});
+  const va={};(st.validations||[]).forEach(v=>{va['w'+String(v.semaine).padStart(2,'0')]=v;});
+  putReal('P',{...clone(DEF_P),...(st.params||{})});putReal('R',st.raci?{...clone(DEF_R),...st.raci}:clone(DEF_R));
+  putReal('SA',sa);putReal('AC',st.actions||[]);putReal('VA',va);putReal('JR',{});putReal('HL',st.journal||[]);
+  render();controles().then(renderFrame);
+}
+async function gsRefresh(){if(!TOKEN||DEMO)return;const st=await api('etat');applyState(st);}
+function showLogin(msg){
+  $('#login').hidden=false;$('#l-err').textContent=msg||'';
+  setTimeout(()=>{const i=$('#l-id');if(i&&!i.value)i.focus();else if($('#l-pw'))$('#l-pw').focus();},50);
+}
+async function gsLogin(){
+  const id=$('#l-id').value.trim(),pw=$('#l-pw').value,btn=$('[data-a=login]');
+  if(!id||!pw){$('#l-err').textContent='Saisissez votre identifiant et votre mot de passe.';return;}
+  btn.disabled=true;btn.textContent='Connexion…';$('#l-err').textContent='';
+  try{
+    const r=await api('connexion',{identifiant:id,motDePasse:pw});
+    TOKEN=r.jeton;ME=r.moi;setRoles();
+    try{localStorage.setItem('sd-jeton',JSON.stringify({jeton:TOKEN,expire:r.expire}));}catch(e){}
+    $('#l-pw').value='';$('#login').hidden=true;
+    if(ME.role==='SAISIE'){zoneFilter='__mine__';maZone=ME.zones[0]||'';tab='saisie';}else tab='dash';
+    if(ME.doitChanger)askPwd(true);else{await gsRefresh();toast(`Bienvenue, ${ME.nom}.`);}
+  }catch(e){$('#l-err').textContent=e.message||'Connexion impossible.';}
+  finally{btn.disabled=false;btn.textContent='Se connecter';}
+}
+async function gsLogout(expire){
+  if(!expire&&TOKEN){try{await api('deconnexion');}catch(e){}}
+  TOKEN=null;ME=null;try{localStorage.removeItem('sd-jeton');}catch(e){}
+  P=clone(DEF_P);R=clone(DEF_R);SA={};AC=[];HL=[];JR={};VA={};HI=[];COMPTES={};canWrite=false;canAdmin=false;
+  dirtyCards.clear();paramsDirty=false;tab='dash';render(true);
+  showLogin(expire?'Votre session a expiré : reconnectez-vous.':'Vous êtes déconnecté.');
+}
+function askPwd(force){
+  pwdForce=!!force;
+  openDialog(force?'Choisissez votre mot de passe personnel':'Changer mon mot de passe',`
+    ${force?'<p class="note" style="margin-top:0">Vous vous connectez avec un mot de passe temporaire. Choisissez maintenant votre mot de passe personnel : au moins 8 caractères, avec des lettres et des chiffres. Ne le communiquez à personne.</p>':''}
+    <div class="fgrid"><label class="f w"><span>Mot de passe actuel${force?' (temporaire)':''}</span><input type="password" id="pw-old" autocomplete="current-password"></label>
+    <label class="f"><span>Nouveau mot de passe</span><input type="password" id="pw-new" autocomplete="new-password"></label>
+    <label class="f"><span>Confirmation</span><input type="password" id="pw-conf" autocomplete="new-password"></label></div>`,true,'pwd');
+  $('.df [data-a=close]').hidden=force;$('.dh [data-a=close]').hidden=force;
+}
+let pwdForce=false;
+async function savePwd(){
+  const o=$('#pw-old').value,n=$('#pw-new').value,c=$('#pw-conf').value;
+  if(n!==c){$('#dlg-e').textContent='Les deux nouveaux mots de passe ne sont pas identiques.';return;}
+  try{await api('changerMdp',{ancien:o,nouveau:n});ME.doitChanger=false;pwdForce=false;$('.dh [data-a=close]').hidden=false;$('#dlg').close();toast('Mot de passe enregistré.');await gsRefresh();}
+  catch(e){$('#dlg-e').textContent=e.message||'Échec du changement.';}
+}
+
+/* ---------- Onglet Comptes (administrateur) ---------- */
+let COMPTES_LISTE=[];
+async function rComptes(){
+  const el=$('#v-comptes');
+  if(!(mode==='gs'&&canAdmin)){el.innerHTML='<p class="note">Réservé à l\'administrateur.</p>';return;}
+  if(!el.innerHTML)el.innerHTML='<p class="note">Chargement des comptes…</p>';
+  try{COMPTES_LISTE=(await api('comptes')).comptes;}catch(e){el.innerHTML=`<div class="banner">${esc(e.message||'Erreur')}</div>`;return;}
+  if(tab!=='comptes')return;
+  const ordre={DIRECTEUR:0,CHEF_DIVISION:1,ADMIN:2,SAISIE:3};
+  const L=COMPTES_LISTE.slice().sort((a,b)=>(ordre[a.role]-ordre[b.role])||a.id.localeCompare(b.id));
+  el.innerHTML=`
+  <div class="panel"><div class="panel-h"><div><h2>Comptes d'accès</h2><p>Chaque responsable a son propre identifiant et son mot de passe personnel. Les mots de passe sont stockés sous forme chiffrée : personne, pas même l'administrateur, ne peut les lire.</p></div><button class="btn" data-a="new-compte">${ico('plus')}Nouveau compte</button></div>
+  <div class="tbl"><table><thead><tr><th>Identifiant</th><th>Titulaire</th><th>Rôle</th><th>Entité</th><th>Zones de saisie</th><th>État</th><th>Dernière connexion</th><th></th></tr></thead><tbody>
+  ${L.map(c=>{const z=c.role==='SAISIE'?P.zones.filter(x=>x.structure===c.entite).map(x=>x.zone).join(', '):'—';
+    return `<tr><td><code>${esc(c.id)}</code></td><td>${esc(c.nom)}</td><td><span class="tag ${c.role==='ADMIN'?'ko':c.role==='CHEF_DIVISION'?'amb':c.role==='DIRECTEUR'?'ok':'wait'} plain">${esc({ADMIN:'Administrateur',DIRECTEUR:'Directeur Régional',CHEF_DIVISION:'Chef de division (DDFA)',SAISIE:'Responsable de saisie'}[c.role]||c.role)}</span></td><td>${esc(c.entite)}</td><td class="tags">${esc(z)}</td>
+    <td>${c.actif?(c.doitChanger?'<span class="tag amb plain">Mot de passe temporaire</span>':'<span class="tag ok plain">Actif</span>'):'<span class="tag wait plain">Désactivé</span>'}</td>
+    <td class="note">${c.derniere?fdt(c.derniere):'jamais'}</td>
+    <td style="white-space:nowrap"><button class="btn ghost small" data-a="edit-compte" data-id="${esc(c.id)}">Modifier</button> <button class="btn ghost small" data-a="reinit-mdp" data-id="${esc(c.id)}">Nouveau mot de passe</button></td></tr>`;}).join('')}
+  </tbody></table></div></div>
+  <div class="grid2" style="margin-top:20px">
+    <div class="panel"><h2>Droits par rôle</h2><table class="ttab"><tbody>
+      <tr><td><b>Directeur Régional</b></td><td>Consulte tout : tableau de bord, jauges, saisies, actions, note de synthèse. Ne modifie rien.</td></tr>
+      <tr><td><b>Chef de la Division de Développement des Filières Agricoles</b></td><td>Valide chaque semaine, corrige toute zone, gère et supprime les actions, gèle les saisies en cas d'incident.</td></tr>
+      <tr><td><b>Responsable de saisie</b></td><td>Saisit uniquement les zones de son entité (DPA ou ORMVAD) et crée ou met à jour des actions.</td></tr>
+      <tr><td><b>Administrateur</b></td><td>Tout ce qui précède, plus les comptes, les paramètres de campagne, la matrice des responsabilités et la remise à zéro.</td></tr></tbody></table></div>
+    <div class="panel"><h2>Bonnes pratiques</h2><ul class="plist"><li>Un compte par personne : ne jamais partager un identifiant.</li><li>Le mot de passe temporaire est changé obligatoirement à la première connexion.</li><li>En cas de départ ou de changement de poste, désactivez le compte ou attribuez-lui un nouveau mot de passe.</li><li>Après 5 essais erronés, le compte est bloqué 15 minutes.</li></ul></div>
+  </div>`;
+}
+function openCompte(c){
+  const nouv=!c;c=c||{id:'',nom:'',role:'SAISIE',entite:'',actif:true};
+  const ents=[...new Set(['DRA',...P.structures])];
+  openDialog(nouv?'Nouveau compte':`Modifier le compte ${c.id}`,`<div class="fgrid">
+    <label class="f"><span>Identifiant</span><input id="c-id" value="${esc(c.id)}" ${nouv?'':'disabled'} placeholder="ex. dpa.settat2"></label>
+    <label class="f"><span>Titulaire (nom et fonction)</span><input id="c-nom" value="${esc(c.nom)}"></label>
+    <label class="f"><span>Rôle</span><select id="c-role">${Object.entries(ROLE_LIB).map(([k,l])=>`<option value="${k}" ${k===c.role?'selected':''}>${esc(l)}</option>`).join('')}</select></label>
+    <label class="f"><span>Entité</span><select id="c-ent">${ents.map(e=>`<option ${e===c.entite?'selected':''}>${esc(e)}</option>`).join('')}</select></label>
+    <label class="f w" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="c-actif" ${c.actif?'checked':''} style="width:auto"> <span>Compte actif</span></label></div>
+    ${nouv?'<p class="note">Un mot de passe temporaire sera généré et affiché une seule fois.</p>':''}`,true,'compte');
+}
+async function saveCompte(){
+  const d={id:$('#c-id').value.trim().toLowerCase(),nom:$('#c-nom').value.trim(),role:$('#c-role').value,entite:$('#c-ent').value,actif:$('#c-actif').checked};
+  try{const r=await api('compte',{compte:d});$('#dlg').close();if(r.motDePasse)showPwd(d.id,d.nom,r.motDePasse);else toast('Compte enregistré.');rComptes();}
+  catch(e){$('#dlg-e').textContent=e.message||'Erreur.';}
+}
+function showPwd(id,nom,mdp){
+  openDialog('Mot de passe temporaire',`<p>Communiquez ces informations à <b>${esc(nom||id)}</b> en main propre ou par un canal sûr. Il devra choisir son mot de passe personnel à la première connexion.</p>
+    <div class="pwbox"><div><span>Adresse</span><b>${esc(location.href.split('#')[0])}</b></div><div><span>Identifiant</span><b>${esc(id)}</b></div><div><span>Mot de passe temporaire</span><b class="mono">${esc(mdp)}</b></div></div>
+    <p class="note">Ce mot de passe ne sera plus affiché : notez-le maintenant.</p>`,false);
 }
 
 /* ================= Événements ================= */
@@ -1430,8 +1602,15 @@ document.addEventListener('click',e=>{
   else if(a==='new-action')openAction(null);
   else if(a==='edit-action')openAction(AC.find(x=>x.id===t.dataset.id));
   else if(a==='del-action'){if(t.dataset.armed)wAction(t.dataset.id,null);else{t.dataset.armed=1;t.textContent='Confirmer';setTimeout(()=>{if(t.isConnected){delete t.dataset.armed;t.textContent='Supprimer';}},3500);}}
-  else if(a==='save-action')saveAction();
-  else if(a==='close')$('#dlg').close();
+  else if(a==='save-action'){if(dlgMode==='pwd')savePwd();else if(dlgMode==='compte')saveCompte();else saveAction();}
+  else if(a==='close'){if(!pwdForce)$('#dlg').close();}
+  else if(a==='login')gsLogin();
+  else if(a==='logout')gsLogout(false);
+  else if(a==='mypwd')askPwd(false);
+  else if(a==='demo-login'){$('#login').hidden=true;enterDemo();}
+  else if(a==='new-compte')openCompte(null);
+  else if(a==='edit-compte')openCompte(COMPTES_LISTE.find(x=>x.id===t.dataset.id));
+  else if(a==='reinit-mdp'){if(t.dataset.armed){const c=COMPTES_LISTE.find(x=>x.id===t.dataset.id);api('reinitMdp',{id:t.dataset.id}).then(r=>{showPwd(c.id,c.nom,r.motDePasse);rComptes();}).catch(e=>toast(e.message||'Erreur.'));}else{t.dataset.armed=1;t.textContent='Confirmer';setTimeout(()=>{if(t.isConnected){delete t.dataset.armed;t.textContent='Nouveau mot de passe';}},3500);}}
   else if(a==='save-params')saveParams();
   else if(a==='reload-params'){paramsDirty=false;render(true);}
   else if(a==='valid')validerSemaine(selW);
@@ -1466,12 +1645,14 @@ document.addEventListener('change',e=>{
 });
 /* Navigation clavier entre onglets */
 document.addEventListener('keydown',e=>{
-  const t=e.target;if(!t.matches||!t.matches('[role=tab]'))return;
+  const t=e.target;
+  if(e.key==='Enter'&&(t.id==='l-id'||t.id==='l-pw')){e.preventDefault();gsLogin();return;}if(!t.matches||!t.matches('[role=tab]'))return;
   const ks=TABS.map(x=>x[0]),i=ks.indexOf(t.dataset.tab);let n=null;
   if(e.key==='ArrowRight')n=ks[(i+1)%ks.length];else if(e.key==='ArrowLeft')n=ks[(i-1+ks.length)%ks.length];else if(e.key==='Home')n=ks[0];else if(e.key==='End')n=ks[ks.length-1];
   if(n){e.preventDefault();tab=n;paramsDirty=false;render(true);document.getElementById('tab-'+n).focus();}
 });
 setInterval(()=>{controles().then(renderFrame);},120000);
+$('#dlg').addEventListener('cancel',e=>{if(pwdForce)e.preventDefault();});
 window.addEventListener('beforeunload',e=>{if(dirtyCards.size||paramsDirty){e.preventDefault();e.returnValue='';}});
 let rt;window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{if(tab==='dash')drawCharts(selW);},250);});
 window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>render());
@@ -1495,6 +1676,15 @@ function subscribe(){
   db.collection('validations').onSnapshot(s=>{const o={};s.docs.forEach(d=>o[d.id]=d.data());putReal('VA',o);render();resolveNames();},onErr);
 }
 (async()=>{
+  if(API_URL&&!window.AUTO_DEMO){
+    mode='gs';canWrite=false;canAdmin=false;render(true);
+    let s=null;try{s=JSON.parse(localStorage.getItem('sd-jeton')||'null');}catch(e){}
+    if(s&&s.jeton&&new Date(s.expire)>new Date()){TOKEN=s.jeton;try{await gsRefresh();if(ME&&ME.role==='SAISIE'){zoneFilter='__mine__';maZone=ME.zones[0]||'';}if(ME&&ME.doitChanger)askPwd(true);}catch(e){TOKEN=null;showLogin(e.message);}}
+    else showLogin();
+    setInterval(()=>{if(TOKEN&&!DEMO&&!document.hidden&&!$('#dlg').open)gsRefresh().catch(()=>{});},30000);
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden&&TOKEN&&!DEMO)gsRefresh().catch(()=>{});});
+    return;
+  }
   loadLocal();render();
   const use=n=>window.claude&&window.claude.use?window.claude.use(n).catch(()=>null):Promise.resolve(null);
   const [d,u,x]=await Promise.all([use('db'),use('user'),use('downloads')]);

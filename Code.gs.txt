@@ -1,0 +1,346 @@
+/**
+ * Suivi hebdomadaire du semis direct — Région Casablanca-Settat
+ * Serveur Google Apps Script : comptes, droits d'accès et stockage dans ce Google Sheet.
+ *
+ * Installation : voir le guide. En résumé :
+ *   1. Dans le Google Sheet : Extensions → Apps Script, coller ce fichier, enregistrer.
+ *   2. Exécuter la fonction « installer » une fois (autoriser l'accès).
+ *   3. Déployer → Nouveau déploiement → Application Web : exécuter en tant que « Moi »,
+ *      accès « Tout le monde ». Copier l'adresse /exec dans config.js.
+ */
+const VERSION = '1.0';
+const SESSION_HEURES = 12;
+const ROLES = {
+  ADMIN: 'Administrateur',
+  DIRECTEUR: 'Directeur Régional',
+  CHEF_DIVISION: 'Chef de la Division de Développement des Filières Agricoles',
+  SAISIE: 'Responsable de saisie (entité)'
+};
+const TABLES = {
+  Comptes: ['Identifiant', 'Nom', 'Rôle', 'Entité', 'Actif', 'Empreinte du mot de passe', 'Sel', 'Doit changer', 'Dernière connexion'],
+  Sessions: ['Empreinte du jeton', 'Identifiant', 'Expire le'],
+  Parametres: ['Clé', 'Valeur (JSON)', 'Modifié le', 'Par'],
+  Saisies: ['Id', 'Semaine', 'Zone', 'Superficie (ha)', 'Dont céréales (ha)', 'Nouveaux agriculteurs', 'Semoirs actifs', 'Parcelles démo', 'Appui demandé à', 'Difficultés', 'Saisi par', 'Créé le', 'Modifié le', 'JSON'],
+  Actions: ['Id', 'Date de revue', 'Zone', 'Structure', 'Action', 'Personne', 'Échéance', 'Statut', 'Commentaire', 'JSON'],
+  Validations: ['Id', 'Semaine', 'Validé par', 'Date', 'Cumul (ha)', 'Empreinte', 'JSON'],
+  Journal: ['Date', 'Identifiant', 'Opération', 'Fiche', 'Semaine', 'Zone', 'Avant (ha)', 'Après (ha)', 'Après validation', 'JSON']
+};
+const PARAMS_DEFAUT = {
+  campagne: '2026–2027', s1: '2026-10-09', semoirs: 211, fin: 17, ouverture: 2, capacite: 30, seuilSemaine: 0.25,
+  heureSaisie: 'Vendredi 13h00', heureRevue: 'Vendredi 16h30', source: 'DRACS, NCAR au 26-09-2026, p. 5–6',
+  zones: [
+    { zone: 'Settat', structure: 'DPA Settat', programme: 75000, realise: 27187.7 },
+    { zone: 'Benslimane', structure: 'DPA Benslimane', programme: 4000, realise: 7637 },
+    { zone: 'Berrechid', structure: 'DPA Berrechid', programme: 15000, realise: 8085 },
+    { zone: 'Nouaceur', structure: 'DPA Casablanca', programme: 600, realise: 574 },
+    { zone: 'Médiouna', structure: 'DPA Casablanca', programme: 300, realise: 95 },
+    { zone: 'Mohammedia', structure: 'DPA Casablanca', programme: 600, realise: 281 },
+    { zone: 'El Jadida (DPA)', structure: 'DPA El Jadida', programme: 1200, realise: 720 },
+    { zone: 'El Jadida (ORMVAD)', structure: 'ORMVAD', programme: 1000, realise: 500 },
+    { zone: 'Sidi Bennour', structure: 'DPA Sidi Bennour', programme: 100, realise: 450 }
+  ].map(function (z) { return Object.assign({ pointFocal: '', tel: '', decalage: 0 }, z); }),
+  structures: ['DRA', 'DPA Settat', 'DPA Berrechid', 'DPA Benslimane', 'DPA Casablanca', 'DPA El Jadida', 'DPA Sidi Bennour', 'ORMVAD', 'ONCA', 'INRA', 'OPA'],
+  profil: [0, .01, .03, .06, .11, .18, .27, .37, .48, .59, .69, .77, .84, .89, .93, .96, .98, .99, 1, 1, 1, 1]
+};
+const COMPTES_INITIAUX = [
+  ['admin', "Administrateur de l'application", 'ADMIN', 'DRA'],
+  ['directeur.regional', 'Directeur Régional', 'DIRECTEUR', 'DRA'],
+  ['chef.ddfa', 'Chef de la Division de Développement des Filières Agricoles', 'CHEF_DIVISION', 'DRA'],
+  ['dpa.settat', 'Responsable saisie DPA Settat', 'SAISIE', 'DPA Settat'],
+  ['dpa.berrechid', 'Responsable saisie DPA Berrechid', 'SAISIE', 'DPA Berrechid'],
+  ['dpa.benslimane', 'Responsable saisie DPA Benslimane', 'SAISIE', 'DPA Benslimane'],
+  ['dpa.casablanca', 'Responsable saisie DPA Casablanca (Nouaceur, Médiouna, Mohammedia)', 'SAISIE', 'DPA Casablanca'],
+  ['dpa.eljadida', 'Responsable saisie DPA El Jadida', 'SAISIE', 'DPA El Jadida'],
+  ['dpa.sidibennour', 'Responsable saisie DPA Sidi Bennour', 'SAISIE', 'DPA Sidi Bennour'],
+  ['ormvad', 'Responsable saisie ORMVA des Doukkala', 'SAISIE', 'ORMVAD']
+];
+
+/* ============================== Outils ============================== */
+function erreur_(code, message) { const e = new Error(message); e.code = code; return e; }
+function ss_() { return SpreadsheetApp.getActiveSpreadsheet(); }
+function feuille_(n) { const s = ss_().getSheetByName(n); if (!s) throw erreur_('installation', "Feuille « " + n + " » absente : exécutez la fonction installer."); return s; }
+function lignes_(n) { const v = feuille_(n).getDataRange().getValues(); v.shift(); return v; }
+function maintenant_() { return new Date().toISOString(); }
+function hex_(b) { return b.map(function (x) { return ((x + 256) % 256).toString(16).padStart(2, '0'); }).join(''); }
+function sha_(t) { return hex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, t, Utilities.Charset.UTF_8)); }
+function hashMdp_(mdp, sel) { let h = sel + '|' + mdp; for (let i = 0; i < 300; i++) h = sha_(h + sel); return h; }
+function stable_(o) {
+  if (o === null || typeof o !== 'object') return JSON.stringify(o);
+  if (Array.isArray(o)) return '[' + o.map(stable_).join(',') + ']';
+  return '{' + Object.keys(o).sort().map(function (k) { return JSON.stringify(k) + ':' + stable_(o[k]); }).join(',') + '}';
+}
+function slug_(s) { return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+function sid_(w, z) { return 'w' + String(w).padStart(2, '0') + '_' + slug_(z); }
+function nombre_(v, entier) { if (v === null || v === undefined || v === '') return null; const x = Number(v); if (!isFinite(x) || x < 0 || x > 1e7) throw erreur_('valeur', 'Valeur numérique invalide : ' + v); return entier ? Math.round(x) : x; }
+function texte_(v, max) { if (v === null || v === undefined) return null; const t = String(v).trim().slice(0, max || 500); return t || null; }
+function genMdp_() { const a = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'; const u = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, ''); let p = ''; for (let i = 0; i < 10; i++) p += a[parseInt(u.substr(i * 2, 2), 16) % a.length]; return p; }
+function upsert_(n, id, ligne) {
+  const s = feuille_(n), v = s.getDataRange().getValues();
+  for (let i = 1; i < v.length; i++) if (String(v[i][0]) === String(id)) { s.getRange(i + 1, 1, 1, ligne.length).setValues([ligne]); return; }
+  s.appendRow(ligne);
+}
+function supprimer_(n, id) {
+  const s = feuille_(n), v = s.getDataRange().getValues();
+  for (let i = v.length - 1; i >= 1; i--) if (String(v[i][0]) === String(id)) s.deleteRow(i + 1);
+}
+function jsonTable_(n) { return lignes_(n).map(function (r) { try { return JSON.parse(r[r.length - 1]); } catch (e) { return null; } }).filter(function (x) { return x; }); }
+function trouver_(n, id) { const r = lignes_(n).filter(function (r) { return String(r[0]) === String(id); })[0]; return r ? JSON.parse(r[r.length - 1]) : null; }
+function verrou_(f) { const l = LockService.getScriptLock(); l.waitLock(20000); try { return f(); } finally { l.releaseLock(); } }
+
+/* ============================== Paramètres ============================== */
+function lireCle_(k) { const r = lignes_('Parametres').filter(function (r) { return r[0] === k; })[0]; return r ? JSON.parse(r[1]) : null; }
+function ecrireCle_(k, v, par) { upsert_('Parametres', k, [k, JSON.stringify(v), maintenant_(), par || '']); }
+function params_() { return Object.assign({}, PARAMS_DEFAUT, lireCle_('params') || {}); }
+function zonesEntite_(entite) { return params_().zones.filter(function (z) { return z.structure === entite; }).map(function (z) { return z.zone; }); }
+
+/* ============================== Installation ============================== */
+function installer() {
+  const s = ss_();
+  Object.keys(TABLES).forEach(function (n) {
+    let f = s.getSheetByName(n);
+    if (!f) f = s.insertSheet(n);
+    if (f.getLastRow() === 0) { f.appendRow(TABLES[n]); f.setFrozenRows(1); f.getRange(1, 1, 1, TABLES[n].length).setFontWeight('bold').setBackground('#2F5A28').setFontColor('#FFFFFF'); }
+  });
+  if (!lireCle_('params')) ecrireCle_('params', PARAMS_DEFAUT, 'installation');
+  const existants = lignes_('Comptes').map(function (r) { return r[0]; });
+  const nouveaux = [];
+  COMPTES_INITIAUX.forEach(function (c) {
+    if (existants.indexOf(c[0]) >= 0) return;
+    const mdp = genMdp_(), sel = Utilities.getUuid();
+    feuille_('Comptes').appendRow([c[0], c[1], c[2], c[3], true, hashMdp_(mdp, sel), sel, true, '']);
+    nouveaux.push([c[0], c[1], ROLES[c[2]], c[3], mdp]);
+  });
+  if (nouveaux.length) {
+    let f = s.getSheetByName('Mots de passe initiaux');
+    if (!f) f = s.insertSheet('Mots de passe initiaux');
+    f.clear();
+    f.appendRow(['Identifiant', 'Nom', 'Rôle', 'Entité', 'Mot de passe temporaire (à changer à la première connexion)']);
+    nouveaux.forEach(function (r) { f.appendRow(r); });
+    f.getRange(1, 1, 1, 5).setFontWeight('bold');
+    f.appendRow([]); f.appendRow(['Communiquez chaque mot de passe à son titulaire, puis SUPPRIMEZ cette feuille.']);
+  }
+  ['Comptes', 'Sessions', 'Journal'].forEach(function (n) {
+    try { feuille_(n).protect().setDescription('Gérée par l\'application : ne pas modifier à la main').setWarningOnly(true); } catch (e) { }
+  });
+  return 'Installation terminée : ' + nouveaux.length + ' compte(s) créé(s).';
+}
+
+/* ============================== Accès web ============================== */
+function doGet() { return sortie_({ ok: true, service: 'suivi-semis-direct-cs', version: VERSION, heure: maintenant_() }); }
+function doPost(e) {
+  let r;
+  try { r = router_(JSON.parse(e.postData.contents)); }
+  catch (err) { r = { ok: false, code: err.code || 'erreur', message: err.message || String(err) }; }
+  return sortie_(r);
+}
+function sortie_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+
+function router_(q) {
+  if (q.action === 'connexion') return connexion_(q);
+  const u = session_(q.jeton);
+  const actions = {
+    etat: function () { return etat_(u); },
+    deconnexion: function () { supprimer_('Sessions', sha_(String(q.jeton))); return { ok: true }; },
+    changerMdp: function () { return verrou_(function () { return changerMdp_(u, q); }); },
+    saisie: function () { return verrou_(function () { return saisie_(u, q); }); },
+    vider: function () { return verrou_(function () { return vider_(u, q); }); },
+    action: function () { return verrou_(function () { return action_(u, q); }); },
+    supprimerAction: function () { return verrou_(function () { exiger_(u, ['CHEF_DIVISION', 'ADMIN']); supprimer_('Actions', q.id); journal_(u, { type: 'Suppression d\'action', fiche: q.id }); return { ok: true }; }); },
+    valider: function () { return verrou_(function () { return valider_(u, q); }); },
+    rouvrir: function () { return verrou_(function () { exiger_(u, ['CHEF_DIVISION', 'ADMIN']); const id = 'w' + String(q.semaine).padStart(2, '0'); supprimer_('Validations', id); journal_(u, { type: 'Réouverture', fiche: id, semaine: q.semaine }); return { ok: true }; }); },
+    parametres: function () { return verrou_(function () { return parametres_(u, q); }); },
+    gel: function () { return verrou_(function () { return gel_(u, q); }); },
+    raci: function () { return verrou_(function () { exiger_(u, ['ADMIN']); ecrireCle_('raci', q.raci, u.id); return { ok: true }; }); },
+    comptes: function () { exiger_(u, ['ADMIN']); return { ok: true, comptes: comptes_() }; },
+    compte: function () { return verrou_(function () { return compte_(u, q); }); },
+    reinitMdp: function () { return verrou_(function () { return reinitMdp_(u, q); }); },
+    remiseAZero: function () { return verrou_(function () { return remiseAZero_(u); }); }
+  };
+  if (!actions[q.action]) throw erreur_('action', 'Action inconnue : ' + q.action);
+  if (u.doitChanger && ['etat', 'changerMdp', 'deconnexion'].indexOf(q.action) < 0) throw erreur_('mdp', 'Changez votre mot de passe temporaire avant de continuer.');
+  return actions[q.action]();
+}
+
+/* ============================== Comptes et sessions ============================== */
+function compteParId_(id) {
+  const v = feuille_('Comptes').getDataRange().getValues();
+  for (let i = 1; i < v.length; i++) if (v[i][0] === id) return { ligne: i + 1, id: v[i][0], nom: v[i][1], role: v[i][2], entite: v[i][3], actif: v[i][4] === true || v[i][4] === 'TRUE', hash: v[i][5], sel: v[i][6], doitChanger: v[i][7] === true || v[i][7] === 'TRUE' };
+  return null;
+}
+function profil_(c) { return { id: c.id, nom: c.nom, role: c.role, roleLibelle: ROLES[c.role] || c.role, entite: c.entite, zones: c.role === 'SAISIE' ? zonesEntite_(c.entite) : [], doitChanger: c.doitChanger }; }
+function connexion_(q) {
+  const id = String(q.identifiant || '').trim().toLowerCase(), cache = CacheService.getScriptCache(), cle = 'echecs_' + id;
+  const n = Number(cache.get(cle) || 0);
+  if (n >= 5) throw erreur_('bloque', 'Trop de tentatives : compte bloqué 15 minutes.');
+  const c = compteParId_(id);
+  if (!c || !c.actif || hashMdp_(String(q.motDePasse || ''), c.sel) !== c.hash) {
+    cache.put(cle, String(n + 1), 900);
+    throw erreur_('identifiants', 'Identifiant ou mot de passe incorrect.');
+  }
+  cache.remove(cle);
+  const jeton = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+  verrou_(function () {
+    const s = feuille_('Sessions'), v = s.getDataRange().getValues(), now = new Date();
+    for (let i = v.length - 1; i >= 1; i--) if (new Date(v[i][2]) < now) s.deleteRow(i + 1);
+    s.appendRow([sha_(jeton), id, new Date(Date.now() + SESSION_HEURES * 3600e3).toISOString()]);
+    feuille_('Comptes').getRange(c.ligne, 9).setValue(maintenant_());
+  });
+  return { ok: true, jeton: jeton, moi: profil_(c), expire: new Date(Date.now() + SESSION_HEURES * 3600e3).toISOString() };
+}
+function session_(jeton) {
+  if (!jeton) throw erreur_('auth', 'Session absente : reconnectez-vous.');
+  const h = sha_(String(jeton)), r = lignes_('Sessions').filter(function (r) { return r[0] === h; })[0];
+  if (!r || new Date(r[2]) < new Date()) throw erreur_('auth', 'Session expirée : reconnectez-vous.');
+  const c = compteParId_(r[1]);
+  if (!c || !c.actif) throw erreur_('auth', 'Compte désactivé.');
+  return profil_(c);
+}
+function exiger_(u, roles) { if (roles.indexOf(u.role) < 0) throw erreur_('interdit', 'Action non autorisée pour le rôle « ' + (ROLES[u.role] || u.role) + ' ».'); }
+function changerMdp_(u, q) {
+  const c = compteParId_(u.id), nv = String(q.nouveau || '');
+  if (hashMdp_(String(q.ancien || ''), c.sel) !== c.hash) throw erreur_('identifiants', 'Mot de passe actuel incorrect.');
+  if (nv.length < 8 || nv.toLowerCase() === u.id || !/[0-9]/.test(nv) || !/[A-Za-z]/.test(nv)) throw erreur_('valeur', 'Le nouveau mot de passe doit contenir au moins 8 caractères, des lettres et des chiffres.');
+  const sel = Utilities.getUuid();
+  feuille_('Comptes').getRange(c.ligne, 6, 1, 3).setValues([[hashMdp_(nv, sel), sel, false]]);
+  journal_(u, { type: 'Changement de mot de passe', fiche: u.id });
+  return { ok: true };
+}
+function comptes_() {
+  return lignes_('Comptes').map(function (r) { return { id: r[0], nom: r[1], role: r[2], roleLibelle: ROLES[r[2]] || r[2], entite: r[3], actif: r[4] === true || r[4] === 'TRUE', doitChanger: r[7] === true || r[7] === 'TRUE', derniere: r[8] || null }; });
+}
+function compte_(u, q) {
+  exiger_(u, ['ADMIN']);
+  const d = q.compte || {}, id = String(d.id || '').trim().toLowerCase();
+  if (!/^[a-z0-9._-]{3,40}$/.test(id)) throw erreur_('valeur', 'Identifiant invalide : 3 à 40 caractères, lettres minuscules, chiffres, point, tiret.');
+  if (!ROLES[d.role]) throw erreur_('valeur', 'Rôle inconnu.');
+  const p = params_();
+  if (d.role === 'SAISIE' && p.zones.every(function (z) { return z.structure !== d.entite; })) throw erreur_('valeur', 'Un compte de saisie doit être rattaché à une entité qui a au moins une zone.');
+  if (id === u.id && (d.actif === false || d.role !== 'ADMIN')) throw erreur_('valeur', 'Vous ne pouvez pas désactiver ni rétrograder votre propre compte.');
+  const c = compteParId_(id);
+  if (c) {
+    feuille_('Comptes').getRange(c.ligne, 2, 1, 4).setValues([[texte_(d.nom, 120) || c.nom, d.role, texte_(d.entite, 60) || '', d.actif !== false]]);
+    if (d.actif === false) supprimerSessions_(id);
+    journal_(u, { type: 'Modification de compte', fiche: id });
+    return { ok: true };
+  }
+  const mdp = genMdp_(), sel = Utilities.getUuid();
+  feuille_('Comptes').appendRow([id, texte_(d.nom, 120) || id, d.role, texte_(d.entite, 60) || '', d.actif !== false, hashMdp_(mdp, sel), sel, true, '']);
+  journal_(u, { type: 'Création de compte', fiche: id });
+  return { ok: true, motDePasse: mdp };
+}
+function reinitMdp_(u, q) {
+  exiger_(u, ['ADMIN']);
+  const c = compteParId_(String(q.id || ''));
+  if (!c) throw erreur_('valeur', 'Compte introuvable.');
+  const mdp = genMdp_(), sel = Utilities.getUuid();
+  feuille_('Comptes').getRange(c.ligne, 6, 1, 3).setValues([[hashMdp_(mdp, sel), sel, true]]);
+  supprimerSessions_(c.id);
+  journal_(u, { type: 'Réinitialisation de mot de passe', fiche: c.id });
+  return { ok: true, motDePasse: mdp };
+}
+function supprimerSessions_(id) { const s = feuille_('Sessions'), v = s.getDataRange().getValues(); for (let i = v.length - 1; i >= 1; i--) if (v[i][1] === id) s.deleteRow(i + 1); }
+
+/* ============================== Données ============================== */
+function etat_(u) {
+  const validations = jsonTable_('Validations'), journal = jsonTable_('Journal');
+  return {
+    ok: true, moi: u, heure: maintenant_(), params: params_(), raci: lireCle_('raci'),
+    saisies: jsonTable_('Saisies'), actions: jsonTable_('Actions'), validations: validations,
+    journal: journal.slice(-3000),
+    noms: lignes_('Comptes').map(function (r) { return { id: r[0], nom: r[1], role: r[2], entite: r[3] }; })
+  };
+}
+function journal_(u, e) {
+  const d = Object.assign({ id: 'j' + Utilities.getUuid().slice(0, 8), date: maintenant_(), par: u.id }, e);
+  feuille_('Journal').appendRow([d.date, d.par, d.type, d.fiche || '', d.semaine || '', d.zone || '', d.avant ? d.avant.ha : '', d.apres ? d.apres.ha : '', d.apresValidation ? 'oui' : '', JSON.stringify(d)]);
+}
+function estValidee_(w) { return !!trouver_('Validations', 'w' + String(w).padStart(2, '0')); }
+function controleFiche_(u, semaine, zone) {
+  exiger_(u, ['SAISIE', 'CHEF_DIVISION', 'ADMIN']);
+  const p = params_();
+  if (!p.zones.some(function (z) { return z.zone === zone; })) throw erreur_('valeur', 'Zone inconnue : ' + zone);
+  if (!(semaine >= 1 && semaine <= p.profil.length)) throw erreur_('valeur', 'Semaine invalide.');
+  if (u.role === 'SAISIE' && u.zones.indexOf(zone) < 0) throw erreur_('interdit', 'Votre compte ne peut saisir que pour : ' + u.zones.join(', ') + '.');
+  if (p.gel && u.role === 'SAISIE') throw erreur_('gel', 'Saisies gelées par la DRA' + (p.gelMotif ? ' : ' + p.gelMotif : '') + '.');
+}
+function saisie_(u, q) {
+  const f = q.fiche || {}, semaine = Number(f.semaine), zone = String(f.zone || '');
+  controleFiche_(u, semaine, zone);
+  const id = sid_(semaine, zone), avant = trouver_('Saisies', id);
+  if (q.versionVue !== undefined && (avant ? avant.maj : null) !== (q.versionVue || null))
+    throw erreur_('conflit', 'Cette fiche vient d\'être modifiée par un autre compte' + (avant ? ' (' + avant.saisiPar + ')' : '') + '. Vos valeurs sont conservées à l\'écran : rechargez pour voir la version actuelle avant de réenregistrer.');
+  const ha = nombre_(f.ha);
+  if (ha === null) throw erreur_('valeur', 'La superficie est obligatoire (0 si aucun semis).');
+  const ce = nombre_(f.cereales);
+  if (ce !== null && ce > ha) throw erreur_('valeur', 'Les céréales dépassent la superficie totale.');
+  const now = maintenant_();
+  const d = { semaine: semaine, zone: zone, ha: ha, cereales: ce, agriculteurs: nombre_(f.agriculteurs, true), semoirs: nombre_(f.semoirs, true), demo: nombre_(f.demo, true),
+    appui: texte_(f.appui, 60), difficultes: texte_(f.difficultes, 500), saisiPar: u.id, maj: now, cree: avant ? (avant.cree || avant.maj) : now };
+  upsert_('Saisies', id, [id, semaine, zone, ha, ce, d.agriculteurs, d.semoirs, d.demo, d.appui || '', d.difficultes || '', u.id, d.cree, now, JSON.stringify(d)]);
+  const type = q.type === 'Restauration' ? 'Restauration' : (avant ? 'Modification' : 'Création');
+  journal_(u, { type: type, fiche: id, semaine: semaine, zone: zone, avant: avant, apres: d, apresValidation: estValidee_(semaine), avertissements: Array.isArray(q.avertissements) ? q.avertissements.slice(0, 5) : null });
+  return { ok: true, fiche: d };
+}
+function vider_(u, q) {
+  const semaine = Number(q.semaine), zone = String(q.zone || '');
+  controleFiche_(u, semaine, zone);
+  const id = sid_(semaine, zone), avant = trouver_('Saisies', id);
+  if (!avant) return { ok: true };
+  supprimer_('Saisies', id);
+  journal_(u, { type: 'Vidage', fiche: id, semaine: semaine, zone: zone, avant: avant, apres: null, apresValidation: estValidee_(semaine) });
+  return { ok: true };
+}
+function action_(u, q) {
+  exiger_(u, ['SAISIE', 'CHEF_DIVISION', 'ADMIN']);
+  const a = q.donnees || {}, id = q.id ? String(q.id) : 'a' + Utilities.getUuid().replace(/-/g, '').slice(0, 12);
+  const statuts = ['À faire', 'En cours', 'Réalisée', 'Bloquée'];
+  const d = { action: texte_(a.action, 300), structure: texte_(a.structure, 60), zone: texte_(a.zone, 60), personne: texte_(a.personne, 120), dateRevue: texte_(a.dateRevue, 10),
+    echeance: texte_(a.echeance, 10), statut: statuts.indexOf(a.statut) >= 0 ? a.statut : 'À faire', commentaire: texte_(a.commentaire, 500), origine: a.origine ? Number(a.origine) : null, maj: maintenant_(), majPar: u.id };
+  if (!d.action || !d.structure || !d.echeance) throw erreur_('valeur', "L'action, la structure responsable et l'échéance sont obligatoires.");
+  upsert_('Actions', id, [id, d.dateRevue || '', d.zone || '', d.structure, d.action, d.personne || '', d.echeance, d.statut, d.commentaire || '', JSON.stringify(Object.assign({ id: id }, d))]);
+  return { ok: true, id: id };
+}
+function valider_(u, q) {
+  exiger_(u, ['CHEF_DIVISION', 'ADMIN']);
+  const w = Number(q.semaine), p = params_(), fiches = {};
+  if (!(w >= 1 && w <= p.profil.length)) throw erreur_('valeur', 'Semaine invalide.');
+  const toutes = {}; jsonTable_('Saisies').forEach(function (s) { toutes[sid_(s.semaine, s.zone)] = s; });
+  p.zones.forEach(function (z) {
+    const id = sid_(w, z.zone), s = toutes[id];
+    fiches[id] = s ? { ha: s.ha, cereales: s.cereales, agriculteurs: s.agriculteurs, semoirs: s.semoirs, demo: s.demo, appui: s.appui, difficultes: s.difficultes } : null;
+  });
+  Object.keys(fiches).forEach(function (k) { const f = fiches[k]; if (f) Object.keys(f).forEach(function (c) { if (f[c] === undefined) f[c] = null; }); });
+  const id = 'w' + String(w).padStart(2, '0');
+  const d = { semaine: w, validePar: u.id, date: maintenant_(), cumul: q.cumul === null ? null : Number(q.cumul), semaineHa: q.semaineHa === null ? null : Number(q.semaineHa), tr: Number(q.tr) || 0,
+    note: texte_(q.note, 20000), fiches: fiches, empreinte: 'sha256:' + sha_(stable_(fiches)) };
+  upsert_('Validations', id, [id, w, u.id, d.date, d.cumul === null ? '' : d.cumul, d.empreinte, JSON.stringify(d)]);
+  journal_(u, { type: 'Validation', fiche: id, semaine: w });
+  return { ok: true, validation: d };
+}
+function parametres_(u, q) {
+  exiger_(u, ['ADMIN']);
+  const actuel = lireCle_('params') || {};
+  if (q.versionVue !== undefined && (actuel.maj || null) !== (q.versionVue || null)) throw erreur_('conflit', 'Un autre compte vient de modifier les paramètres : rechargez avant d\'enregistrer.');
+  const np = Object.assign({}, q.params, { maj: maintenant_(), majPar: u.id });
+  ecrireCle_('params', np, u.id);
+  journal_(u, { type: 'Modification des paramètres', fiche: 'params' });
+  return { ok: true, params: np };
+}
+function gel_(u, q) {
+  exiger_(u, ['CHEF_DIVISION', 'ADMIN']);
+  const p = params_();
+  p.gel = !!q.actif; p.gelPar = q.actif ? u.id : null; p.gelDate = q.actif ? maintenant_() : null; p.gelMotif = q.actif ? texte_(q.motif, 200) : null; p.maj = maintenant_(); p.majPar = u.id;
+  ecrireCle_('params', p, u.id);
+  journal_(u, { type: q.actif ? 'Gel des saisies' : 'Dégel des saisies', fiche: 'params' });
+  return { ok: true };
+}
+function remiseAZero_(u) {
+  exiger_(u, ['ADMIN']);
+  const s = ss_(), j = feuille_('Journal');
+  if (j.getLastRow() > 1) j.copyTo(s).setName('Journal archivé ' + Utilities.formatDate(new Date(), 'Africa/Casablanca', 'yyyy-MM-dd HH-mm'));
+  ['Saisies', 'Actions', 'Validations', 'Journal'].forEach(function (n) { const f = feuille_(n); if (f.getLastRow() > 1) f.getRange(2, 1, f.getLastRow() - 1, f.getLastColumn()).clearContent(); });
+  supprimer_('Parametres', 'raci');
+  const p = params_(); p.gel = false; p.gelPar = null; p.gelDate = null; p.gelMotif = null; ecrireCle_('params', p, u.id);
+  journal_(u, { type: 'Remise à zéro', fiche: 'application' });
+  return { ok: true };
+}
